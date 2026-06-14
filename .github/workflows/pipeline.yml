@@ -8,9 +8,9 @@ on:
 jobs:
 
 # -----------------------------
-# 1. TRAIN MODEL
+# 1. VALIDATE PROJECT STRUCTURE
 # -----------------------------
-  train-model:
+  validate:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,36 +26,44 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Train model
+      - name: Check backend script
         run: |
-          python train.py
+          python -m py_compile data/backend_sources/superkart_sales_app.py
+
+      - name: Check frontend script
+        run: |
+          python -m py_compile data/frontend_sources/superkart_sales_app_ui.py
 
 
 # -----------------------------
-# 2. BUILD BACKEND (FLASK API CHECK)
+# 2. TEST MODEL LOAD
 # -----------------------------
-  backend-check:
-    needs: train-model
+  model-check:
+    needs: validate
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
 
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
 
-      - name: Validate API script
+      - name: Test model loading
         run: |
-          python -m py_compile superkart_sales_app.py
+          python -c "import joblib; joblib.load('data/backend_sources/superkart_sales_forecast_model.joblib')"
 
 
 # -----------------------------
-# 3. DEPLOY TO HUGGING FACE SPACE (FRONTEND)
+# 3. DEPLOY FRONTEND TO HF
 # -----------------------------
   deploy-frontend:
-    needs: [train-model, backend-check]
+    needs: [validate, model-check]
     runs-on: ubuntu-latest
 
     steps:
@@ -66,8 +74,16 @@ jobs:
         run: |
           pip install huggingface_hub
 
-      - name: Push Streamlit App to HF Space
+      - name: Push to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          python deploy_frontend.py
+          python -c "
+from huggingface_hub import HfApi
+api = HfApi(token='$HF_TOKEN')
+api.upload_folder(
+    repo_id='Lasya679/SuperKartSalesFrontend',
+    folder_path='data/frontend_sources',
+    repo_type='space'
+)
+"
