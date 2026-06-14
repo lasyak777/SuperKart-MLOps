@@ -1,0 +1,73 @@
+name: SuperKart MLOps Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+
+# -----------------------------
+# 1. TRAIN MODEL
+# -----------------------------
+  train-model:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Train model
+        run: |
+          python train.py
+
+
+# -----------------------------
+# 2. BUILD BACKEND (FLASK API CHECK)
+# -----------------------------
+  backend-check:
+    needs: train-model
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Validate API script
+        run: |
+          python -m py_compile superkart_sales_app.py
+
+
+# -----------------------------
+# 3. DEPLOY TO HUGGING FACE SPACE (FRONTEND)
+# -----------------------------
+  deploy-frontend:
+    needs: [train-model, backend-check]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install Hugging Face Hub
+        run: |
+          pip install huggingface_hub
+
+      - name: Push Streamlit App to HF Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python deploy_frontend.py
